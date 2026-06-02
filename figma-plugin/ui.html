@@ -205,12 +205,28 @@
       let busy = false, selection = [];
 
       // ── persisted connection settings ──────────────────────────────────
+      // Source of truth is figma.clientStorage (survives full plugin reloads),
+      // accessed via the main thread. localStorage is kept as a fast in-session
+      // cache so fields aren't blank between the boot and the settings message.
       try {
         $("base").value = localStorage.getItem("pg_base") || $("base").value;
         $("token").value = localStorage.getItem("pg_token") || "";
       } catch (_) {}
       const base = () => { const b = $("base").value.trim().replace(/\/+$/, ""); try { localStorage.setItem("pg_base", b); } catch (_) {} return b; };
       const token = () => { const t = $("token").value.trim(); try { localStorage.setItem("pg_token", t); } catch (_) {} return t; };
+
+      // Persist current base+token into clientStorage (debounced on input).
+      let _persistTimer = null;
+      function persistSettings() {
+        clearTimeout(_persistTimer);
+        _persistTimer = setTimeout(() => {
+          parent.postMessage({ pluginMessage: {
+            type: "settings-set", base: base(), token: token(),
+          } }, "*");
+        }, 300);
+      }
+      $("base").addEventListener("input", persistSettings);
+      $("token").addEventListener("input", persistSettings);
       const authHeaders = () => ({ "X-Phygital-Sidecar-Token": token() });
       const jsonHeaders = () => Object.assign({ "Content-Type": "application/json" }, authHeaders());
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -472,16 +488,32 @@
       };
 
       // ── messages from main thread ──────────────────────────────────────
+      let _booted = false;
+      function boot() {
+        if (_booted) return;
+        _booted = true;
+        syncMode();
+        refreshState();
+      }
+
       window.onmessage = (event) => {
         const msg = event.data.pluginMessage;
         if (!msg) return;
         if (msg.type === "selection") { selection = msg.nodes || []; syncFillRow(); }
         if (msg.type === "exported" && _exportResolve) { const f = _exportResolve; _exportResolve = null; f(msg); }
+        if (msg.type === "settings") {
+          const s = msg.settings || {};
+          if (s.base) { $("base").value = s.base; try { localStorage.setItem("pg_base", s.base); } catch (_) {} }
+          if (s.token) { $("token").value = s.token; try { localStorage.setItem("pg_token", s.token); } catch (_) {} }
+          boot();
+        }
       };
 
       // ── boot ────────────────────────────────────────────────────────────
-      syncMode();
-      refreshState();
+      // Pull persisted settings from clientStorage first; boot() runs once the
+      // "settings" reply lands. Fallback timer covers the unlikely no-reply case.
+      parent.postMessage({ pluginMessage: { type: "settings-get" } }, "*");
+      setTimeout(boot, 1000);
     </script>
   </body>
 </html>

@@ -22,12 +22,41 @@ function sendSelection() {
 
 figma.on("selectionchange", sendSelection);
 
+// Persisted connection settings live in figma.clientStorage (survives full
+// plugin reloads, unlike the iframe's localStorage which Figma may clear).
+const STORE_KEY = "phygital.settings";
+
 figma.ui.onmessage = async (msg) => {
   if (!msg || typeof msg !== "object") return;
 
   switch (msg.type) {
     case "get-selection": {
       sendSelection();
+      break;
+    }
+
+    // Return persisted { base, token } to the UI so it can prefill on boot.
+    case "settings-get": {
+      let saved = null;
+      try {
+        saved = await figma.clientStorage.getAsync(STORE_KEY);
+      } catch (e) {
+        saved = null;
+      }
+      figma.ui.postMessage({ type: "settings", settings: saved || {} });
+      break;
+    }
+
+    // Persist { base, token } from the UI whenever the user edits them.
+    case "settings-set": {
+      try {
+        await figma.clientStorage.setAsync(STORE_KEY, {
+          base: typeof msg.base === "string" ? msg.base : "",
+          token: typeof msg.token === "string" ? msg.token : "",
+        });
+      } catch (e) {
+        // Non-fatal: settings just won't persist this session.
+      }
       break;
     }
 
