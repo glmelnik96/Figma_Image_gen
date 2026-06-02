@@ -19,6 +19,13 @@ rsync -a --delete \
   --exclude "*.pyc" \
   "$ROOT/" "$RUNTIME_ROOT/"
 
+PIDS="$(lsof -tiTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
+if [ -n "$PIDS" ]; then
+  echo "Stopping existing listener(s) on :8765: $PIDS"
+  echo "$PIDS" | xargs kill >/dev/null 2>&1 || true
+  sleep 1
+fi
+
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 echo "Runtime synced and service restarted."
 
