@@ -1,0 +1,39 @@
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtual environments ────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Secrets / local runtime data ────────────────────────────────────────
+# Реальные креды не коммитим — только .env.example. Сессии/токены/загрузки
+# живут в OS AppData (вне репозитория), но на всякий случай игнорируем тут.
+.env
+*.env
+!.env.example
+session.json
+sidecar.token
+brand_docs.json
+asset_cache.jsonl
+jobs.jsonl
+downloads/
+uploads/
+asset_uploads/
+
+# ── OS / editor ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

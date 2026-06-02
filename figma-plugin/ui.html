@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff; --fg: #1e1e1e; --muted: #8c8c8c; --border: #e6e6e6;
+        --accent: #5b67f2; --ok: #1f9d55; --err: #d23f3f; --field: #f5f5f5;
+        --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #2c2c2c; --fg: #e8e8e8; --muted: #a0a0a0; --border: #444;
+          --accent: #7b86ff; --field: #383838;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--fg); background: var(--bg); padding: 12px 14px 16px;
+      }
+      header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      header h1 { font-size: 13px; margin: 0; flex: 1; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+      .dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
+      .icon-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+      label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
+      input, select, textarea {
+        width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
+        background: var(--field); color: var(--fg); font-size: 12px; font-family: inherit;
+      }
+      textarea { resize: vertical; min-height: 64px; }
+      input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .settings { border: 1px dashed var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+      [hidden] { display: none !important; }
+      button.primary {
+        width: 100%; margin-top: 14px; padding: 10px; border: none; border-radius: 6px;
+        background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+      }
+      button.primary:disabled { opacity: 0.5; cursor: default; }
+      button.link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 0; margin-top: 8px; }
+      .status { margin-top: 12px; font-size: 11px; color: var(--muted); min-height: 16px; }
+      .status.ok { color: var(--ok); } .status.err { color: var(--err); }
+      .bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 8px; overflow: hidden; }
+      .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+      .checkbox { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11px; color: var(--fg); }
+      .checkbox input { width: auto; }
+      .hint { font-size: 10px; color: var(--muted); margin-top: 6px; }
+      .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+      .thumbs img { width: 72px; height: 72px; object-fit: cover; border-radius: 5px; border: 1px solid var(--border); }
+      .who { font-size: 10px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span id="dot" class="dot"></span>
+      <h1>Phygital Studio</h1>
+      <button id="gear" class="icon-btn" title="Connection settings">⚙</button>
+    </header>
+
+    <div id="settings" class="settings" hidden>
+      <label for="base">Sidecar URL</label>
+      <input id="base" value="http://localhost:8765" spellcheck="false" />
+      <label for="token">Sidecar token</label>
+      <input id="token" placeholder="paste X-Phygital-Sidecar-Token" spellcheck="false" />
+      <div class="hint" id="health">Not checked yet.</div>
+      <button id="logout" class="link" hidden>Log out of Phygital+</button>
+    </div>
+
+    <!-- ───────────── LOGIN VIEW ───────────── -->
+    <section id="view-login" hidden>
+      <p class="hint" style="margin-top:0">Sign in to your Phygital+ account to generate.</p>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" spellcheck="false" placeholder="you@company.com" />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      <button id="login" class="primary">Log in</button>
+      <div id="loginStatus" class="status">Enter your Phygital+ credentials.</div>
+    </section>
+
+    <!-- ───────────── GENERATION VIEW ───────────── -->
+    <section id="view-app" hidden>
+      <div class="who" id="who"></div>
+
+      <label for="mode">Mode</label>
+      <select id="mode">
+        <option value="standard">Standard</option>
+        <option value="brand">Brand (Cloud.ru)</option>
+      </select>
+
+      <div id="modelRow">
+        <label for="model">Model</label>
+        <select id="model">
+          <option value="94">Nano Banana (fast)</option>
+          <option value="98">GPT Image</option>
+        </select>
+      </div>
+
+      <div id="brandStyleRow" hidden>
+        <label for="brandVariant">Brand style</label>
+        <select id="brandVariant">
+          <option value="photo">Photo (realistic)</option>
+          <option value="render">Render (3D)</option>
+          <option value="isometric">Isometric</option>
+        </select>
+        <div class="hint">Your prompt is rewritten by the Cloud.ru brand enhancer (Gemini), then drawn by Nano Banana.</div>
+      </div>
+
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" placeholder="A serene mountain lake at golden hour, ultra detailed"></textarea>
+
+      <div id="params-94">
+        <div class="grid2">
+          <div>
+            <label for="nb_model">Version</label>
+            <select id="nb_model">
+              <option value="v3_1">v3.1 (Pro)</option>
+              <option value="v3">v3</option>
+            </select>
+          </div>
+          <div>
+            <label for="nb_res">Resolution</label>
+            <select id="nb_res">
+              <option value="k1">1K</option>
+              <option value="k2">2K</option>
+              <option value="k4">4K</option>
+              <option value="default">default</option>
+            </select>
+          </div>
+        </div>
+        <label for="nb_ratio">Aspect ratio</label>
+        <select id="nb_ratio">
+          <option value="default">default</option>
+          <option value="r_1_1">1:1</option>
+          <option value="r_3_4">3:4</option>
+          <option value="r_4_3">4:3</option>
+          <option value="r_9_16">9:16</option>
+          <option value="r_16_9">16:9</option>
+          <option value="r_2_3">2:3</option>
+          <option value="r_3_2">3:2</option>
+        </select>
+      </div>
+
+      <div id="params-98" hidden>
+        <div class="grid2">
+          <div>
+            <label for="gpt_ratio">Aspect ratio</label>
+            <select id="gpt_ratio">
+              <option value="auto">auto</option>
+              <option value="r_1024_1024">1:1 (1024)</option>
+              <option value="r_1536_1024">3:2 (1536×1024)</option>
+              <option value="r_1024_1536">2:3 (1024×1536)</option>
+            </select>
+          </div>
+          <div>
+            <label for="gpt_quality">Quality</label>
+            <select id="gpt_quality">
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label for="gpt_bg">Background</label>
+            <select id="gpt_bg">
+              <option value="auto">auto</option>
+              <option value="transparent">transparent</option>
+              <option value="opaque">opaque</option>
+            </select>
+          </div>
+          <div>
+            <label for="gpt_n">Images</label>
+            <select id="gpt_n">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <label class="checkbox" id="refRow" hidden>
+        <input type="checkbox" id="ref" />
+        <span id="refLabel">Use selection as reference (img2img)</span>
+      </label>
+
+      <label class="checkbox" id="fillRow" hidden>
+        <input type="checkbox" id="fill" />
+        <span id="fillLabel">Fill selected layer instead of inserting new</span>
+      </label>
+
+      <button id="go" class="primary">Generate</button>
+      <div class="bar" id="barWrap" hidden><i id="bar"></i></div>
+      <div id="status" class="status">Ready.</div>
+      <div class="thumbs" id="thumbs"></div>
+    </section>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const dotEl = $("dot");
+      let busy = false, selection = [];
+
+      // ── persisted connection settings ──────────────────────────────────
+      try {
+        $("base").value = localStorage.getItem("pg_base") || $("base").value;
+        $("token").value = localStorage.getItem("pg_token") || "";
+      } catch (_) {}
+      const base = () => { const b = $("base").value.trim().replace(/\/+$/, ""); try { localStorage.setItem("pg_base", b); } catch (_) {} return b; };
+      const token = () => { const t = $("token").value.trim(); try { localStorage.setItem("pg_token", t); } catch (_) {} return t; };
+      const authHeaders = () => ({ "X-Phygital-Sidecar-Token": token() });
+      const jsonHeaders = () => Object.assign({ "Content-Type": "application/json" }, authHeaders());
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      $("gear").onclick = () => { $("settings").hidden = !$("settings").hidden; };
+
+      function showView(name) {
+        $("view-login").hidden = name !== "login";
+        $("view-app").hidden = name !== "app";
+        $("logout").hidden = name !== "app";
+      }
+      function setStatus(el, text, kind) { el.textContent = text; el.className = "status" + (kind ? " " + kind : ""); }
+      function setProgress(p) {
+        if (p == null) { $("barWrap").hidden = true; return; }
+        $("barWrap").hidden = false; $("bar").style.width = Math.round(p * 100) + "%";
+      }
+
+      // ── connection + session bootstrap ─────────────────────────────────
+      async function refreshState() {
+        if (!token()) {
+          dotEl.className = "dot err";
+          $("health").textContent = "Paste the sidecar token (see start.command output).";
+          $("settings").hidden = false;
+          showView("login");
+          setStatus($("loginStatus"), "Set the sidecar token in settings (⚙) first.", "err");
+          return;
+        }
+        try {
+          const r = await fetch(base() + "/auth/status", { headers: authHeaders() });
+          if (r.status === 401) {
+            dotEl.className = "dot err";
+            $("health").textContent = "Sidecar token rejected. Re-paste it.";
+            $("settings").hidden = false;
+            showView("login");
+            setStatus($("loginStatus"), "Invalid sidecar token.", "err");
+            return;
+          }
+          const s = await r.json();
+          dotEl.className = "dot ok";
+          if (s.session_ok) {
+            $("health").textContent = "Connected · session valid (ttl " + s.jwt_ttl_sec + "s).";
+            showView("app");
+          } else {
+            $("health").textContent = "Connected · not signed in to Phygital+.";
+            showView("login");
+          }
+        } catch (e) {
+          dotEl.className = "dot err";
+          $("health").textContent = "Sidecar not reachable at " + base() + ". Is it running?";
+          $("settings").hidden = false;
+          showView("login");
+          setStatus($("loginStatus"), "Sidecar offline — start it and retry.", "err");
+        }
+      }
+
+      // ── login ──────────────────────────────────────────────────────────
+      async function doLogin() {
+        const email = $("email").value.trim(), password = $("password").value;
+        if (!email || !password) return setStatus($("loginStatus"), "Enter email and password.", "err");
+        if (!token()) { $("settings").hidden = false; return setStatus($("loginStatus"), "Set the sidecar token (⚙) first.", "err"); }
+        $("login").disabled = true;
+        setStatus($("loginStatus"), "Signing in…");
+        try {
+          const r = await fetch(base() + "/auth/login", {
+            method: "POST", headers: jsonHeaders(),
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            const msg = (data.detail && data.detail.message) || data.detail || ("HTTP " + r.status);
+            throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+          }
+          $("password").value = "";
+          $("who").textContent = "Signed in as " + (data.email || email);
+          setStatus($("loginStatus"), "Signed in ✓", "ok");
+          await refreshState();
+        } catch (e) {
+          setStatus($("loginStatus"), e.message || String(e), "err");
+        } finally {
+          $("login").disabled = false;
+        }
+      }
+      $("login").onclick = doLogin;
+      $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+
+      $("logout").onclick = async () => {
+        try { await fetch(base() + "/auth/logout", { method: "POST", headers: authHeaders() }); } catch (_) {}
+        $("who").textContent = "";
+        await refreshState();
+      };
+
+      // ── model / mode param visibility ──────────────────────────────────
+      function syncModel() {
+        const m = $("model").value;
+        $("params-94").hidden = m !== "94";
+        $("params-98").hidden = m !== "98";
+      }
+      $("model").onchange = syncModel;
+
+      function syncMode() {
+        // Brand-режим всегда рисует Nano Banana (узел 94), поэтому скрываем
+        // выбор модели и форсим 94 — параметры Nano Banana при этом остаются.
+        const brand = $("mode").value === "brand";
+        $("brandStyleRow").hidden = !brand;
+        $("modelRow").hidden = brand;
+        if (brand) $("model").value = "94";
+        syncModel();
+        syncRefLabel();
+      }
+      $("mode").onchange = syncMode;
+
+      function syncRefLabel() {
+        // В brand-режиме reference запускает brand_i2i (промпт игнорируется —
+        // его заменяет system-prompt документ), поэтому уточняем подпись.
+        const brand = $("mode").value === "brand";
+        if (!$("refRow").hidden && selection.length === 1) {
+          const n = selection[0].name;
+          $("refLabel").textContent = brand
+            ? 'Restyle "' + n + '" with brand i2i (prompt ignored)'
+            : 'Use "' + n + '" as reference (img2img)';
+        }
+      }
+
+      function syncFillRow() {
+        const one = selection.length === 1;
+        const fillable = one && selection[0].fillable;
+        $("fillRow").hidden = !fillable;
+        if (fillable) $("fillLabel").textContent = 'Fill "' + selection[0].name + '" instead of inserting new';
+        else $("fill").checked = false;
+
+        $("refRow").hidden = !one;
+        if (one) $("refLabel").textContent = 'Use "' + selection[0].name + '" as reference (img2img)';
+        else $("ref").checked = false;
+        syncRefLabel();
+      }
+
+      // Ask the main thread to export the current selection to PNG bytes.
+      let _exportResolve = null;
+      function exportSelection() {
+        return new Promise((resolve, reject) => {
+          _exportResolve = (msg) => (msg.ok ? resolve(msg) : reject(new Error(msg.error || "export failed")));
+          parent.postMessage({ pluginMessage: { type: "export-selection" } }, "*");
+        });
+      }
+
+      // Upload raw bytes to the sidecar staging dir, return the server-side path.
+      async function stageInit(bytes) {
+        const fd = new FormData();
+        fd.append("file", new Blob([bytes], { type: "image/png" }), "selection.png");
+        const r = await fetch(base() + "/assets/stage", { method: "POST", headers: authHeaders(), body: fd });
+        if (!r.ok) throw new Error("stage HTTP " + r.status);
+        return (await r.json()).path;
+      }
+
+      // ── generation ──────────────────────────────────────────────────────
+      function buildBody() {
+        const prompt = $("prompt").value.trim();
+        const wantI2I = $("ref").checked && !$("refRow").hidden;
+
+        // Brand-режим (Cloud.ru): оркестрация Gemini brand-enhancer → Nano Banana.
+        if ($("mode").value === "brand") {
+          const params = {
+            prompt, model_name: $("nb_model").value,
+            ratio: $("nb_ratio").value, resolution: $("nb_res").value,
+          };
+          if (wantI2I) {
+            // brand_i2i: описание строит system-prompt по выбранному слою, промпт не нужен.
+            return { body: { node_id: 94, pipeline: "brand_i2i", params } };
+          }
+          if (!prompt) return { error: "Enter a prompt." };
+          params.variant = $("brandVariant").value;
+          return { body: { node_id: 94, pipeline: "brand_t2i", params } };
+        }
+
+        if (!prompt) return { error: "Enter a prompt." };
+        const m = $("model").value;
+        if (m === "94") {
+          return { body: { node_id: 94, params: {
+            prompt, model_name: $("nb_model").value, ratio: $("nb_ratio").value, resolution: $("nb_res").value,
+          } } };
+        }
+        return { body: { node_id: 98, params: {
+          prompt, version: "v2", aspect_ratio: $("gpt_ratio").value, quality: $("gpt_quality").value,
+          background: $("gpt_bg").value, number_of_images: parseInt($("gpt_n").value, 10),
+        } } };
+      }
+
+      async function pollJob(jobId) {
+        for (let i = 0; i < 400; i++) {
+          const r = await fetch(base() + "/jobs/" + jobId, { headers: authHeaders() });
+          if (!r.ok) throw new Error("poll HTTP " + r.status);
+          const s = await r.json();
+          if (typeof s.progress === "number") setProgress(s.progress);
+          if (s.status === "completed") return s;
+          if (s.status === "failed" || s.status === "canceled") throw new Error(s.error || s.status);
+          setStatus($("status"), "Generating… (" + s.status + ")");
+          await sleep(1500);
+        }
+        throw new Error("timeout waiting for job");
+      }
+
+      async function insertResult(jobId, count, mode) {
+        $("thumbs").innerHTML = "";
+        for (let index = 0; index < count; index++) {
+          const r = await fetch(base() + "/jobs/" + jobId + "/download?index=" + index, { headers: authHeaders() });
+          if (!r.ok) throw new Error("download HTTP " + r.status);
+          const buf = await r.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          const img = document.createElement("img");
+          img.src = URL.createObjectURL(new Blob([buf]));
+          $("thumbs").appendChild(img);
+          parent.postMessage({ pluginMessage: {
+            type: "insert-image", bytes, mode,
+            name: "Phygital " + jobId.slice(0, 6) + (count > 1 ? " #" + (index + 1) : ""),
+          } }, "*");
+        }
+      }
+
+      $("go").onclick = async () => {
+        if (busy) return;
+        const built = buildBody();
+        if (built.error) return setStatus($("status"), built.error, "err");
+        busy = true; $("go").disabled = true; setProgress(0);
+        try {
+          // img2img: export the selected layer and stage it as the init image.
+          if ($("ref").checked && !$("refRow").hidden) {
+            setStatus($("status"), "Exporting reference layer…");
+            const exp = await exportSelection();
+            setStatus($("status"), "Uploading reference…");
+            const path = await stageInit(exp.bytes);
+            const slot = built.body.node_id === 98 ? "images" : "init_img";
+            built.body.init_files = { [slot]: [path] };
+          }
+
+          setStatus($("status"), "Submitting…");
+          const r = await fetch(base() + "/jobs", { method: "POST", headers: jsonHeaders(), body: JSON.stringify(built.body) });
+          if (r.status === 401) { busy = false; $("go").disabled = false; setProgress(null); await refreshState(); return setStatus($("status"), "Session expired — sign in again.", "err"); }
+          if (!r.ok) {
+            let detail = "HTTP " + r.status;
+            try { detail = JSON.stringify((await r.json()).detail || detail); } catch (_) {}
+            throw new Error(detail);
+          }
+          const { job_id } = await r.json();
+          setStatus($("status"), "Queued · " + job_id);
+          const final = await pollJob(job_id);
+          const count = (final.result_paths || []).length || 1;
+          const mode = $("fill").checked ? "fill" : "insert";
+          setStatus($("status"), "Placing " + count + " image" + (count > 1 ? "s" : "") + "…");
+          await insertResult(job_id, count, mode);
+          setProgress(1);
+          setStatus($("status"), "Done ✓ — " + count + " image" + (count > 1 ? "s" : "") + " placed.", "ok");
+        } catch (e) {
+          setStatus($("status"), "Failed: " + (e && e.message ? e.message : String(e)), "err");
+          setProgress(null);
+        } finally {
+          busy = false; $("go").disabled = false;
+          setTimeout(() => setProgress(null), 1200);
+        }
+      };
+
+      // ── messages from main thread ──────────────────────────────────────
+      window.onmessage = (event) => {
+        const msg = event.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === "selection") { selection = msg.nodes || []; syncFillRow(); }
+        if (msg.type === "exported" && _exportResolve) { const f = _exportResolve; _exportResolve = null; f(msg); }
+      };
+
+      // ── boot ────────────────────────────────────────────────────────────
+      syncMode();
+      refreshState();
+    </script>
+  </body>
+</html>
