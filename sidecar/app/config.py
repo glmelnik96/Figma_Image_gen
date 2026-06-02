@@ -1,7 +1,7 @@
 """Sidecar settings via pydantic-settings + .env."""
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,8 +13,16 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    host: str = "127.0.0.1"
-    port: int = 8765
+    # Keep compatibility with HOST/PORT, but prefer PHYGITAL_* names to avoid
+    # collisions with other local services.
+    host: str = Field(
+        "127.0.0.1",
+        validation_alias=AliasChoices("PHYGITAL_HOST", "HOST"),
+    )
+    port: int = Field(
+        8765,
+        validation_alias=AliasChoices("PHYGITAL_PORT", "PORT"),
+    )
 
     phygital_max_concurrent: int = Field(5, ge=1, le=20)
     # Per-node лимит для тяжёлых видео-нод (74, 100, 121, 124).

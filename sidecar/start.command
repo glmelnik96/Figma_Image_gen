@@ -9,6 +9,7 @@ LABEL="com.phygitalstudio.sidecar"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 TOKEN_FILE="$HOME/Library/Application Support/PhygitalStudio/sidecar.token"
 RUNTIME_ROOT="$HOME/Library/Application Support/PhygitalStudio/sidecar-runtime"
+SERVICE_PORT="${SERVICE_PORT:-18765}"
 
 if [ -f "$PLIST" ]; then
   if [ -d "$RUNTIME_ROOT" ]; then
@@ -20,12 +21,6 @@ if [ -f "$PLIST" ]; then
       "$(pwd)/" "$RUNTIME_ROOT/"
   fi
   launchctl bootstrap "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
-  PIDS="$(lsof -tiTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
-  if [ -n "$PIDS" ]; then
-    echo "Stopping existing listener(s) on :8765: $PIDS"
-    echo "$PIDS" | xargs kill >/dev/null 2>&1 || true
-    sleep 1
-  fi
   launchctl kickstart -k "gui/$(id -u)/$LABEL"
   echo "Launchd service restarted: $LABEL"
   if [ -f "$TOKEN_FILE" ]; then
@@ -35,7 +30,18 @@ if [ -f "$PLIST" ]; then
   fi
   echo ""
   echo "Health probe:"
-  curl -s http://localhost:8765/health || true
+  HEALTH=""
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    HEALTH="$(curl -fsS "http://localhost:${SERVICE_PORT}/health" 2>/dev/null || true)"
+    if [ -n "$HEALTH" ]; then
+      echo "$HEALTH"
+      break
+    fi
+    sleep 0.4
+  done
+  if [ -z "$HEALTH" ]; then
+    echo "health check failed (service may still be starting)"
+  fi
   echo ""
   exit 0
 fi
@@ -58,5 +64,5 @@ if [ -f "$TOKEN_FILE" ]; then
   echo ""
 fi
 
-echo "Starting sidecar in foreground on http://localhost:8765 (Ctrl+C to stop)"
+echo "Starting sidecar in foreground on http://localhost:${SERVICE_PORT} (Ctrl+C to stop)"
 exec ./scripts/run_sidecar.sh

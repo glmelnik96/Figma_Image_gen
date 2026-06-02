@@ -9,6 +9,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/PhygitalStudio"
 OUT_LOG="$LOG_DIR/sidecar.out.log"
 ERR_LOG="$LOG_DIR/sidecar.err.log"
+SERVICE_PORT="${SERVICE_PORT:-18765}"
 
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR" "$RUNTIME_ROOT"
 
@@ -21,20 +22,6 @@ rsync -a --delete \
   --exclude "*.pyc" \
   "$ROOT/" "$RUNTIME_ROOT/"
 chmod +x "$RUNNER"
-
-free_port_8765() {
-  local pids
-  pids="$(lsof -tiTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
-  if [ -n "$pids" ]; then
-    echo "Stopping existing listener(s) on :8765: $pids"
-    echo "$pids" | xargs kill >/dev/null 2>&1 || true
-    sleep 1
-    pids="$(lsof -tiTCP:8765 -sTCP:LISTEN 2>/dev/null || true)"
-    if [ -n "$pids" ]; then
-      echo "$pids" | xargs kill -9 >/dev/null 2>&1 || true
-    fi
-  fi
-}
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -64,6 +51,10 @@ cat > "$PLIST" <<EOF
       <string>1</string>
       <key>PATH</key>
       <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+      <key>PHYGITAL_HOST</key>
+      <string>127.0.0.1</string>
+      <key>PHYGITAL_PORT</key>
+      <string>$SERVICE_PORT</string>
     </dict>
   </dict>
 </plist>
@@ -71,7 +62,6 @@ EOF
 
 # Reset previous state and (re)start.
 launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-free_port_8765
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl kickstart -k "gui/$(id -u)/$LABEL"
 
@@ -79,6 +69,7 @@ echo ""
 echo "Autostart installed: $PLIST"
 echo "Runtime copy: $RUNTIME_ROOT"
 echo "Service label: $LABEL"
+echo "Service port:  $SERVICE_PORT"
 echo "Logs:"
 echo "  $OUT_LOG"
 echo "  $ERR_LOG"

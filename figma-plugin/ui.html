@@ -61,7 +61,7 @@
 
     <div id="settings" class="settings" hidden>
       <label for="base">Sidecar URL</label>
-      <input id="base" value="http://localhost:8765" spellcheck="false" />
+      <input id="base" value="http://localhost:18765" spellcheck="false" />
       <label for="token">Sidecar token</label>
       <input id="token" placeholder="paste X-Phygital-Sidecar-Token" spellcheck="false" />
       <div class="hint" id="health">Not checked yet.</div>
@@ -248,6 +248,14 @@
 
       // ── connection + session bootstrap ─────────────────────────────────
       async function refreshState() {
+        const DEFAULT_BASE = "http://localhost:18765";
+        const LEGACY_BASES = ["http://localhost:8765", "http://127.0.0.1:8765"];
+
+        async function fetchStatus(baseUrl) {
+          const r = await fetch(baseUrl + "/auth/status", { headers: authHeaders() });
+          return r;
+        }
+
         if (!token()) {
           dotEl.className = "dot err";
           $("health").textContent = "Paste the sidecar token (see start.command output).";
@@ -257,7 +265,27 @@
           return;
         }
         try {
-          const r = await fetch(base() + "/auth/status", { headers: authHeaders() });
+          let currentBase = base();
+          let r = null;
+          let firstError = null;
+          try {
+            r = await fetchStatus(currentBase);
+          } catch (e) {
+            firstError = e;
+          }
+          // Smooth migration: if legacy 8765 is offline, probe 18765 and switch.
+          if (((!r && firstError) || (r && !r.ok && r.status !== 401)) && LEGACY_BASES.includes(currentBase)) {
+            try {
+              const alt = await fetchStatus(DEFAULT_BASE);
+              if (alt.ok || alt.status === 401) {
+                $("base").value = DEFAULT_BASE;
+                persistSettings();
+                currentBase = DEFAULT_BASE;
+                r = alt;
+              }
+            } catch (_) {}
+          }
+          if (!r && firstError) throw firstError;
           if (r.status === 401) {
             dotEl.className = "dot err";
             $("health").textContent = "Sidecar token rejected. Re-paste it.";

@@ -39,7 +39,7 @@ This command:
 ## 5) Figma plugin setup
 - Load `figma-plugin/manifest.json` in Figma (development plugin).
 - Open plugin.
-- Sidecar URL should be `http://localhost:8765`.
+- Sidecar URL should be `http://localhost:18765` (project default).
 - Paste token once (from `start.command` output).
 - Token and URL are persisted via `figma.clientStorage`.
 
@@ -50,11 +50,11 @@ launchctl print "gui/$(id -u)/com.phygitalstudio.sidecar" | awk '/state =|pid =|
 ```
 - Health:
 ```bash
-curl -s http://localhost:8765/health
+curl -s http://localhost:18765/health
 ```
 - Listener:
 ```bash
-lsof -nP -iTCP:8765 -sTCP:LISTEN
+lsof -nP -iTCP:18765 -sTCP:LISTEN
 ```
 - Logs:
   - `~/Library/Logs/PhygitalStudio/sidecar.out.log`
