@@ -65,6 +65,7 @@
       <label for="token">Sidecar token</label>
       <input id="token" placeholder="paste X-Phygital-Sidecar-Token" spellcheck="false" />
       <div class="hint" id="health">Not checked yet.</div>
+      <button id="retryHealth" class="link">Retry connection</button>
       <button id="logout" class="link" hidden>Log out of Phygital+</button>
     </div>
 
@@ -232,6 +233,7 @@
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
       $("gear").onclick = () => { $("settings").hidden = !$("settings").hidden; };
+      $("retryHealth").onclick = () => { refreshState(); };
 
       function showView(name) {
         $("view-login").hidden = name !== "login";
@@ -278,7 +280,7 @@
           $("health").textContent = "Sidecar not reachable at " + base() + ". Is it running?";
           $("settings").hidden = false;
           showView("login");
-          setStatus($("loginStatus"), "Sidecar offline — start it and retry.", "err");
+          setStatus($("loginStatus"), "Sidecar offline — run sidecar/start.command once (autostart) and press Retry.", "err");
         }
       }
 
