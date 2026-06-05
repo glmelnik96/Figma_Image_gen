@@ -1,13 +1,13 @@
 {
-  "name": "Phygital Studio",
+  "name": "Cloud.ru Brand Generations",
   "id": "phygital-studio-figma",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["http://localhost:8765"],
-    "reasoning": "Phygital Studio talks to a local sidecar (localhost:8765) that proxies image generation to Phygital+. No data leaves the user's machine except via that local sidecar.",
-    "devAllowedDomains": ["http://localhost:8765"]
+    "allowedDomains": ["http://localhost:8765", "http://localhost:18765"],
+    "reasoning": "Phygital Studio talks to a local sidecar (localhost:8765 or localhost:18765) that proxies image generation to Phygital+. No data leaves the user's machine except via that local sidecar.",
+    "devAllowedDomains": ["http://localhost:8765", "http://localhost:18765"]
   }
 }
