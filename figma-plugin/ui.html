@@ -44,6 +44,13 @@
       .thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
       .thumbs img { width: 72px; height: 72px; object-fit: cover; border-radius: 5px; border: 1px solid var(--border); }
       .who { font-size: 10px; color: var(--muted); }
+      .token-row { display: flex; gap: 6px; align-items: stretch; }
+      .token-row input { flex: 1; }
+      .token-row button {
+        flex: none; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px;
+        background: var(--field); color: var(--fg); font-size: 11px; cursor: pointer;
+      }
+      .token-row button:hover { border-color: var(--accent); color: var(--accent); }
     </style>
   </head>
   <body>
@@ -57,7 +64,10 @@
       <label for="base">Sidecar URL</label>
       <input id="base" value="http://localhost:18765" spellcheck="false" />
       <label for="token">Sidecar token</label>
-      <input id="token" placeholder="paste X-Phygital-Sidecar-Token" spellcheck="false" />
+      <div class="token-row">
+        <input id="token" placeholder="paste X-Phygital-Sidecar-Token" spellcheck="false" />
+        <button id="pasteToken" type="button" title="Paste from clipboard">Paste</button>
+      </div>
       <div class="hint" id="health">Not checked yet.</div>
       <button id="retryHealth" class="link">Retry connection</button>
       <button id="logout" class="link" hidden>Log out of Phygital+</button>
@@ -226,8 +236,42 @@
       const jsonHeaders = () => Object.assign({ "Content-Type": "application/json" }, authHeaders());
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-      $("gear").onclick = () => { $("settings").hidden = !$("settings").hidden; };
+      // FastAPI отдаёт ошибки как {"detail": "..."} или {"detail": {...}}; в
+      // 5xx-случаях тело может быть пустым / HTML. Один универсальный парсер
+      // вместо разбросанных try/catch на каждый fetch.
+      async function parseErr(r) {
+        try {
+          const j = await r.json();
+          const d = j && j.detail;
+          if (typeof d === "string") return d;
+          if (d && typeof d === "object") return d.message || JSON.stringify(d);
+        } catch (_) {}
+        return "HTTP " + r.status;
+      }
+
+      $("gear").onclick = () => {
+        const wasHidden = $("settings").hidden;
+        $("settings").hidden = !wasHidden;
+        if (wasHidden && !token()) setTimeout(() => $("token").focus(), 0);
+      };
       $("retryHealth").onclick = () => { refreshState(); };
+
+      // Paste-кнопка избавляет от 2-step паттерна (focus → Cmd/Ctrl+V) и
+      // полезна когда clipboard уже содержит токен из launcher'а.
+      $("pasteToken").onclick = async () => {
+        try {
+          const t = await navigator.clipboard.readText();
+          if (t) {
+            $("token").value = t.trim();
+            persistSettings();
+            refreshState();
+          }
+        } catch (e) {
+          // clipboard API недоступен (Firefox в Figma) → подсказка.
+          $("token").focus();
+          setStatus($("loginStatus"), "Clipboard access denied — paste manually (Cmd/Ctrl+V).", "err");
+        }
+      };
 
       function showView(name) {
         $("view-login").hidden = name !== "login";
@@ -241,53 +285,79 @@
       }
 
       // ── connection + session bootstrap ─────────────────────────────────
+      // Двухстадийный probe: /health (без auth, узнаём «sidecar жив или нет»)
+      // → /auth/status (узнаём «токен валиден» и «есть сессия Phygital+»).
+      // Это даёт три разных user-facing сообщения вместо одного generic
+      // «Sidecar not reachable» который смешивал offline с rejected-token.
       async function refreshState() {
         const DEFAULT_BASE = "http://localhost:18765";
         const LEGACY_BASES = ["http://localhost:8765", "http://127.0.0.1:8765"];
+        const HEALTH_BACKOFF_MS = [0, 250, 500, 1000];  // 4 попытки ~1.75s
 
+        async function probeHealth(baseUrl) {
+          // /health публичный (без token) — sidecar отвечает, даже если
+          // токен в плагине протух / ещё не подтянулся.
+          for (const wait of HEALTH_BACKOFF_MS) {
+            if (wait) await sleep(wait);
+            try {
+              const r = await fetch(baseUrl + "/health", { method: "GET" });
+              if (r.ok) return true;
+            } catch (_) { /* connection refused — retry */ }
+          }
+          return false;
+        }
         async function fetchStatus(baseUrl) {
-          const r = await fetch(baseUrl + "/auth/status", { headers: authHeaders() });
-          return r;
+          return fetch(baseUrl + "/auth/status", { headers: authHeaders() });
+        }
+
+        // Smooth migration: если на текущем base /health молчит, проверим
+        // дефолтный 18765 и переключимся (legacy 8765 → 18765 без интервенции).
+        let currentBase = base();
+        let alive = await probeHealth(currentBase);
+        if (!alive && LEGACY_BASES.includes(currentBase)) {
+          if (await probeHealth(DEFAULT_BASE)) {
+            $("base").value = DEFAULT_BASE;
+            persistSettings();
+            currentBase = DEFAULT_BASE;
+            alive = true;
+          }
+        }
+
+        if (!alive) {
+          dotEl.className = "dot err";
+          $("health").textContent = "Sidecar not reachable at " + currentBase + ". Is it running?";
+          $("settings").hidden = false;
+          showView("login");
+          setStatus(
+            $("loginStatus"),
+            "Sidecar offline — double-click \"Start Phygital Studio\" launcher in the repo root.",
+            "err",
+          );
+          return;
         }
 
         if (!token()) {
           dotEl.className = "dot err";
-          $("health").textContent = "Paste the sidecar token (see start.command output).";
+          $("health").textContent = "Sidecar online — paste the token (Paste button or Cmd/Ctrl+V).";
           $("settings").hidden = false;
+          setTimeout(() => $("token").focus(), 0);
           showView("login");
-          setStatus($("loginStatus"), "Set the sidecar token in settings (⚙) first.", "err");
+          setStatus($("loginStatus"), "Sidecar is running; only the token is missing.", "err");
           return;
         }
+
         try {
-          let currentBase = base();
-          let r = null;
-          let firstError = null;
-          try {
-            r = await fetchStatus(currentBase);
-          } catch (e) {
-            firstError = e;
-          }
-          // Smooth migration: if legacy 8765 is offline, probe 18765 and switch.
-          if (((!r && firstError) || (r && !r.ok && r.status !== 401)) && LEGACY_BASES.includes(currentBase)) {
-            try {
-              const alt = await fetchStatus(DEFAULT_BASE);
-              if (alt.ok || alt.status === 401) {
-                $("base").value = DEFAULT_BASE;
-                persistSettings();
-                currentBase = DEFAULT_BASE;
-                r = alt;
-              }
-            } catch (_) {}
-          }
-          if (!r && firstError) throw firstError;
+          const r = await fetchStatus(currentBase);
           if (r.status === 401) {
             dotEl.className = "dot err";
-            $("health").textContent = "Sidecar token rejected. Re-paste it.";
+            $("health").textContent = "Sidecar token rejected. Re-paste it (Paste button).";
             $("settings").hidden = false;
+            setTimeout(() => $("token").focus(), 0);
             showView("login");
-            setStatus($("loginStatus"), "Invalid sidecar token.", "err");
+            setStatus($("loginStatus"), "Invalid sidecar token — clipboard now contains the fresh value if you ran the launcher.", "err");
             return;
           }
+          if (!r.ok) throw new Error(await parseErr(r));
           const s = await r.json();
           dotEl.className = "dot ok";
           if (s.session_ok) {
@@ -298,11 +368,13 @@
             showView("login");
           }
         } catch (e) {
+          // /health прошёл, но /auth/status сломался — это уже не offline,
+          // а sidecar в degraded состоянии (corrupt session, 5xx).
           dotEl.className = "dot err";
-          $("health").textContent = "Sidecar not reachable at " + base() + ". Is it running?";
+          $("health").textContent = "Sidecar responded with error: " + (e && e.message ? e.message : String(e));
           $("settings").hidden = false;
           showView("login");
-          setStatus($("loginStatus"), "Sidecar offline — run sidecar/start.command once (autostart) and press Retry.", "err");
+          setStatus($("loginStatus"), "Sidecar degraded — check logs (~/Library/Logs/PhygitalStudio/ or %LOCALAPPDATA%\\PhygitalStudio\\logs\\).", "err");
         }
       }
 
@@ -318,11 +390,8 @@
             method: "POST", headers: jsonHeaders(),
             body: JSON.stringify({ email, password }),
           });
+          if (!r.ok) throw new Error(await parseErr(r));
           const data = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            const msg = (data.detail && data.detail.message) || data.detail || ("HTTP " + r.status);
-            throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
-          }
           $("password").value = "";
           $("who").textContent = "Signed in as " + (data.email || email);
           setStatus($("loginStatus"), "Signed in ✓", "ok");
@@ -439,9 +508,12 @@
       }
 
       async function pollJob(jobId) {
-        for (let i = 0; i < 400; i++) {
+        // 1200 итераций × 1.5s = 30 минут. Видео-ноды Kling Omni / Motion
+        // (124) на длинных prompt'ах честно работают >10 минут — старый
+        // лимит 400 (10 минут) рубил их по timeout до получения результата.
+        for (let i = 0; i < 1200; i++) {
           const r = await fetch(base() + "/jobs/" + jobId, { headers: authHeaders() });
-          if (!r.ok) throw new Error("poll HTTP " + r.status);
+          if (!r.ok) throw new Error(await parseErr(r));
           const s = await r.json();
           if (typeof s.progress === "number") setProgress(s.progress);
           if (s.status === "completed") return s;
@@ -449,7 +521,7 @@
           setStatus($("status"), "Generating… (" + s.status + ")");
           await sleep(1500);
         }
-        throw new Error("timeout waiting for job");
+        throw new Error("timeout waiting for job (30 min)");
       }
 
       async function insertResult(jobId, count, mode) {
@@ -488,11 +560,7 @@
           setStatus($("status"), "Submitting…");
           const r = await fetch(base() + "/jobs", { method: "POST", headers: jsonHeaders(), body: JSON.stringify(built.body) });
           if (r.status === 401) { busy = false; $("go").disabled = false; setProgress(null); await refreshState(); return setStatus($("status"), "Session expired — sign in again.", "err"); }
-          if (!r.ok) {
-            let detail = "HTTP " + r.status;
-            try { detail = JSON.stringify((await r.json()).detail || detail); } catch (_) {}
-            throw new Error(detail);
-          }
+          if (!r.ok) throw new Error(await parseErr(r));
           const { job_id } = await r.json();
           setStatus($("status"), "Queued · " + job_id);
           const final = await pollJob(job_id);
@@ -513,11 +581,29 @@
 
       // ── messages from main thread ──────────────────────────────────────
       let _booted = false;
+      let _healthTimer = null;
       function boot() {
         if (_booted) return;
         _booted = true;
         syncMode();
         refreshState();
+        startHealthPing();
+      }
+
+      // Если sidecar упал в фоне (launchd рестартует за пару секунд) — даём
+      // UI понять это без ручного нажатия Retry. 25s достаточно тихо, чтобы
+      // не дёргать /health на каждый чих, но достаточно отзывчиво.
+      function startHealthPing() {
+        if (_healthTimer) return;
+        _healthTimer = setInterval(async () => {
+          if (busy) return;  // не мешаем активной генерации
+          if (!$("view-app").hidden) {
+            try {
+              const r = await fetch(base() + "/health", { method: "GET" });
+              if (!r.ok) refreshState();
+            } catch (_) { refreshState(); }
+          }
+        }, 25000);
       }
 
       window.onmessage = (event) => {
@@ -527,17 +613,28 @@
         if (msg.type === "exported" && _exportResolve) { const f = _exportResolve; _exportResolve = null; f(msg); }
         if (msg.type === "settings") {
           const s = msg.settings || {};
+          // Запоминаем, что было ДО, чтобы понять — настройки изменились или
+          // просто продублировался первый snapshot. Без этого позднее
+          // прилетевший settings-ответ (после fallback boot(setTimeout, 1500))
+          // не триггерит refreshState и UI висит на «no token».
+          const prevBase = $("base").value, prevToken = $("token").value;
           if (s.base) { $("base").value = s.base; try { localStorage.setItem("pg_base", s.base); } catch (_) {} }
           if (s.token) { $("token").value = s.token; try { localStorage.setItem("pg_token", s.token); } catch (_) {} }
-          boot();
+          if (_booted && ($("base").value !== prevBase || $("token").value !== prevToken)) {
+            refreshState();
+          } else {
+            boot();
+          }
         }
       };
 
       // ── boot ────────────────────────────────────────────────────────────
       // Pull persisted settings from clientStorage first; boot() runs once the
-      // "settings" reply lands. Fallback timer covers the unlikely no-reply case.
+      // "settings" reply lands. Fallback timer бампнут с 1000 → 1500ms — на
+      // медленных Mac'ах первая загрузка плагина успевала вызвать boot()
+      // ДО прихода settings-ответа, и refreshState() стрелял с пустым токеном.
       parent.postMessage({ pluginMessage: { type: "settings-get" } }, "*");
-      setTimeout(boot, 1000);
+      setTimeout(boot, 1500);
     </script>
   </body>
 </html>

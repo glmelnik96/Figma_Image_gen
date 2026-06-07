@@ -77,7 +77,14 @@ def build_app() -> FastAPI:
             session_file=paths.session_file(),
             jwt_min_ttl_sec=settings.jwt_min_ttl_sec,
         )
-        await bs.preflight()
+        # Corrupt session.json / expired refresh-token / удалённый аккаунт не
+        # должен валить весь sidecar — иначе launchd (KeepAlive) уходит в
+        # crash-loop. Стартуем в no-session mode и даём UI заново залогиниться.
+        try:
+            await bs.preflight()
+        except Exception:
+            logger.exception("Session preflight failed; starting in no-session mode")
+            bs.session = None
         _app.state.session_bootstrap = bs
 
         reg = TaskRegistry(jsonl_path=paths.jobs_jsonl())

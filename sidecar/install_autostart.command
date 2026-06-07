@@ -39,8 +39,19 @@ cat > "$PLIST" <<EOF
     <string>$RUNTIME_ROOT</string>
     <key>RunAtLoad</key>
     <true/>
+    <!-- Узкий KeepAlive: рестартуемся только при crash (ненулевой exit), но не
+         если процесс корректно вышел сам (например, после corrupt session.json
+         мы сознательно вышли). Broad `KeepAlive=true` без ThrottleInterval даёт
+         crash-loop, который съедает CPU и пишет гигабайты в err.log. -->
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+      <key>Crashed</key>
+      <true/>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
     <key>StandardOutPath</key>
     <string>$OUT_LOG</string>
     <key>StandardErrorPath</key>
